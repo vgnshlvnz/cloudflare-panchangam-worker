@@ -52,6 +52,20 @@ export default {
     if (url.pathname === "/robots.txt") return new Response("User-agent: *\nAllow: /\n", { headers: { "content-type": "text/plain" } });
     if (url.pathname !== "/" && url.pathname !== "/index.html") return errorPage(404, "This page does not exist.");
 
+    // Rate limit by visitor IP before doing any work. Missing binding (e.g. tests) = no limit.
+    if (env?.LIMITER) {
+      const ip = request.headers.get("cf-connecting-ip") || "unknown";
+      const { success } = await env.LIMITER.limit({ key: ip });
+      if (!success) {
+        return new Response(
+          `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Panchangam</title>`
+          + `<body style="font:16px/1.6 system-ui;margin:3rem auto;max-width:36rem;padding:0 1rem"><h1>பஞ்சாங்கம் / Panchangam</h1>`
+          + `<p>அதிகமான கோரிக்கைகள். ஒரு நிமிடம் கழித்து மீண்டும் முயற்சிக்கவும்.</p><p>Too many requests. Please try again in a minute.</p>`,
+          { status: 429, headers: { "content-type": "text/html; charset=utf-8", "retry-after": "60", "cache-control": "no-store" } },
+        );
+      }
+    }
+
     const params = resolveParams(url, cookies(request));
 
     // Canonical cache key with every parameter resolved, so cookie-only visitors share entries.
